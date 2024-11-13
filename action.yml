@@ -1,0 +1,76 @@
+name: 'SubKt Builder'
+description: 'Auto-build SubKt projects'
+author: 'LightArrowsEXE'
+
+inputs:
+  mux-task:
+    description: 'The muxing task to execute the dependencies of. If empty, no dependency resolution will be performed'
+    required: false
+    default: 'mux'
+  java-version:
+    description: 'Java version to use'
+    required: false
+    default: '17'
+  incremental:
+    description: 'Only build episodes with changes (only used if mux-task is specified)'
+    required: false
+    default: 'false'
+  tasks:
+    description: 'Comma-separated list of task types to run (e.g., "merge,swap" will run these tasks for all episodes)'
+    required: false
+    default: ''
+
+runs:
+  using: "composite"
+  steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - uses: actions/setup-java@v4
+      with:
+        java-version: ${{ inputs.java-version }}
+        distribution: 'temurin'
+
+    - uses: gradle/gradle-build-action@v2
+      with:
+        gradle-home-cache-cleanup: true
+
+    - name: Make script executable
+      shell: bash
+      run: chmod +x ${{ github.action_path }}/scripts/determine-tasks.sh
+
+    - name: Analyze Task Dependencies
+      id: analyze-tasks
+      shell: bash
+      run: ${{ github.action_path }}/scripts/determine-tasks.sh
+      env:
+        MUX_TASK: ${{ inputs.mux-task }}
+        INCREMENTAL: ${{ inputs.incremental }}
+        DIRECT_TASKS: ${{ inputs.tasks }}
+        GITHUB_EVENT_NAME: ${{ github.event_name }}
+        GITHUB_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        GITHUB_BEFORE_SHA: ${{ github.event.before }}
+
+    - name: Execute Gradle Build
+      shell: bash
+      run: |
+        chmod +x ./gradlew
+        TASKS="${{ steps.analyze-tasks.outputs.tasks }}"
+        if [ -n "$TASKS" ]; then
+          echo "Running tasks: $TASKS"
+          ./gradlew $TASKS
+        else
+          echo "No tasks to run"
+        fi
+
+    - name: Upload Build Artifacts
+      if: success()
+      uses: actions/upload-artifact@v4
+      with:
+        name: build-artifacts
+        path: |
+          build/**/*
+          !build/tmp/**
+          !build/.gradle/**
+        if-no-files-found: error
