@@ -46,10 +46,7 @@ runs:
         # Build tasks for each episode
         tasks=()
         for ep in $episodes; do
-          # Add core tasks for each episode
-          tasks+=("$ep:merge")
-          tasks+=("$ep:chapters")
-          tasks+=("$ep:swap")
+          tasks+=("merge.$ep" "chapters.$ep" "swap.$ep")
         done
 
         if [ ${#tasks[@]} -eq 0 ]; then
