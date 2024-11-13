@@ -3,14 +3,10 @@ description: 'Auto-build SubKt projects'
 author: 'LightArrowsEXE'
 
 inputs:
-  mux-task:
-    description: 'The muxing task to execute the dependencies of. If empty, no dependency resolution will be performed'
-    required: false
-    default: 'mux'
   incremental:
-    description: 'Only build episodes with changes (only used if mux-task is specified)'
+    description: 'Only build episodes with changes'
     required: false
-    default: 'false'
+    default: 'true'
 
 runs:
   using: "composite"
@@ -30,32 +26,36 @@ runs:
       run: |
         chmod +x ./gradlew
 
-        changed_dirs=$(git diff --name-only HEAD^ | grep -oE '^[0-9]+/' | sort -u | tr -d '/')
+        # Get list of changed files
+        changed_files=$(git diff --name-only HEAD^)
 
-        if [ -z "$changed_dirs" ]; then
+        # Extract episode numbers from changed files
+        episodes=$(echo "$changed_files" | grep -oE '^[0-9]+/' | sort -u | sed 's|/||')
+
+        if [ -z "$episodes" ]; then
           echo "No episode directories changed"
           exit 0
         fi
 
-        tasks_to_run=()
+        echo "Changed episodes: $episodes"
 
-        for dir in $changed_dirs; do
-          if ./gradlew -q tasks | grep -q "^$dir:mux\s"; then
-            deps=$(./gradlew -q "$dir:mux" --dry-run | grep -oE '[0-9]+:(merge|swap|clean|chapters|qc|encode)' || true)
-
-            if [ -n "$deps" ]; then
-              tasks_to_run+=($deps)
-            fi
-          fi
+        # Build tasks for each episode
+        tasks=()
+        for ep in $episodes; do
+          # Add core tasks for each episode
+          tasks+=("$ep:merge")
+          tasks+=("$ep:chapters")
+          tasks+=("$ep:swap")
         done
 
-        if [ ${#tasks_to_run[@]} -eq 0 ]; then
+        if [ ${#tasks[@]} -eq 0 ]; then
           echo "No tasks to run"
           exit 0
         fi
 
-        echo "Running tasks: ${tasks_to_run[*]}"
-        ./gradlew "${tasks_to_run[@]}"
+        # Run all tasks
+        echo "Running tasks: ${tasks[*]}"
+        ./gradlew "${tasks[@]}"
 
     - name: Upload Build Artifacts
       if: success()
