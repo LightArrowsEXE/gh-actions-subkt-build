@@ -24,25 +24,38 @@ runs:
         java-version: '16'
         distribution: 'temurin'
 
-    - name: Run Gradle Dependencies
+    - name: Find and Run Tasks
       shell: bash
       working-directory: ${{ github.workspace }}
       run: |
         chmod +x ./gradlew
-        if [ -n "${{ inputs.mux-task }}" ]; then
-          echo "Getting dependencies for mux task: ${{ inputs.mux-task }}"
-          DEPS=$(./gradlew :dependencies --configuration ${{ inputs.mux-task }} --quiet)
-          if [ -n "$DEPS" ]; then
-            echo "Running dependencies: $DEPS"
-            ./gradlew $DEPS
-          else
-            echo "No dependencies found for mux task"
-            exit 1
-          fi
-        else
-          echo "No mux task specified"
-          exit 1
+
+        changed_dirs=$(git diff --name-only HEAD^ | grep -oE '^[0-9]+/' | sort -u | tr -d '/')
+
+        if [ -z "$changed_dirs" ]; then
+          echo "No episode directories changed"
+          exit 0
         fi
+
+        tasks_to_run=()
+
+        for dir in $changed_dirs; do
+          if ./gradlew -q tasks | grep -q "^$dir:mux\s"; then
+            deps=$(./gradlew -q "$dir:mux" --dry-run | grep -oE '[0-9]+:(merge|swap|clean|chapters|qc|encode)' || true)
+
+            if [ -n "$deps" ]; then
+              tasks_to_run+=($deps)
+            fi
+          fi
+        done
+
+        if [ ${#tasks_to_run[@]} -eq 0 ]; then
+          echo "No tasks to run"
+          exit 0
+        fi
+
+        echo "Running tasks: ${tasks_to_run[*]}"
+        ./gradlew "${tasks_to_run[@]}"
 
     - name: Upload Build Artifacts
       if: success()
