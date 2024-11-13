@@ -7,6 +7,10 @@ inputs:
     description: 'Only build episodes with changes'
     required: false
     default: 'true'
+  debug:
+    description: 'Print debug information'
+    required: false
+    default: 'false'
 
 runs:
   using: "composite"
@@ -55,8 +59,11 @@ runs:
 
         # Run all tasks
         echo "Running tasks: ${tasks[*]}"
-        ./gradlew "${tasks[@]}"
-
+        if [ "${{ inputs.debug }}" = "true" ]; then
+          ./gradlew "${tasks[@]}" --debug
+        else
+          ./gradlew "${tasks[@]}"
+        fi
     - name: Upload Build Artifacts
       if: success()
       uses: actions/upload-artifact@v4
